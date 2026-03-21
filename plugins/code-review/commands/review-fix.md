@@ -45,7 +45,7 @@ unset ANTHROPIC_API_KEY && claude -p "<review-prompt>
 
 ## Git Diff to Review
 
-<diff content>" --model sonnet
+<diff content>" --model opus
 ```
 
 ### Step 3: Parse Review Result

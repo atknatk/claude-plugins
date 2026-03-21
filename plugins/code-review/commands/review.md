@@ -34,7 +34,7 @@ git diff HEAD -- <path>
 4. Run the review in an isolated `claude -p` session. This ensures the reviewer has no bias from the current conversation:
 
 ```bash
-unset ANTHROPIC_API_KEY && claude -p "<review prompt with diff>" --model sonnet
+unset ANTHROPIC_API_KEY && claude -p "<review prompt with diff>" --model opus
 ```
 
 The review prompt should include:

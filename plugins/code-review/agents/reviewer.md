@@ -2,7 +2,7 @@
 name: reviewer
 description: Reviews code changes for bugs, security vulnerabilities, and quality issues with confidence-based filtering. Read-only — never modifies files.
 tools: Read, Bash, Grep, Glob
-model: sonnet
+model: opus
 color: red
 ---
 
