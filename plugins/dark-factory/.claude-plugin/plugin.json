@@ -1,0 +1,32 @@
+{
+  "name": "dark-factory",
+  "version": "1.0.0",
+  "description": "Dark Factory: Autonomous AI development pipeline with governance tiers, holdout validation, satisfaction judging, and Ralph Wiggum loop.",
+  "author": {
+    "name": "Everva"
+  },
+  "repository": "https://github.com/atknatk/claude-plugins",
+  "keywords": [
+    "dark-factory",
+    "autonomous",
+    "pipeline",
+    "governance",
+    "holdout",
+    "satisfaction",
+    "ralph-wiggum"
+  ],
+  "userConfig": {
+    "project_name": {
+      "description": "Project name for alerts and logs (e.g., XiriGo, Optiway)",
+      "sensitive": false
+    },
+    "github_repo": {
+      "description": "GitHub repo in owner/repo format for issue sync and PR management",
+      "sensitive": false
+    },
+    "ship_model": {
+      "description": "Ship strategy: direct-commit | pr-creation | pr-label (default: pr-creation)",
+      "sensitive": false
+    }
+  }
+}

@@ -1,0 +1,39 @@
+# Example Holdout Scenario
+# Holdout scenarios are agent-invisible behavioral tests.
+# Implementation agents NEVER see these — only the holdout-validator reads them.
+#
+# Place your holdout YAML files in .dark-factory/holdouts/<layer>/
+# where <layer> matches your project's layer names (api, web, mobile, etc.)
+
+name: example-auth-check
+description: Verify that authentication is properly enforced on protected endpoints
+priority: critical  # critical | high | medium
+
+preconditions:
+  - "Authentication middleware exists"
+  - "Protected routes are defined"
+
+behaviors:
+  - id: auth-required
+    type: deterministic  # deterministic | unit-behavioral | llm-judge
+    description: "All protected endpoints return 401 without valid auth token"
+    assertion: "Protected route handlers check for authentication before processing"
+
+  - id: invalid-token-rejected
+    type: unit-behavioral
+    description: "Invalid or expired tokens are rejected with proper error response"
+    assertion: "Test exists that sends invalid token and asserts 401 response"
+
+  - id: no-data-leak-on-auth-fail
+    type: llm-judge
+    description: "Authentication failures do not leak sensitive data in error responses"
+    assertion: "Error responses for auth failures contain generic messages, not stack traces or internal details"
+
+anti_patterns:
+  - id: hardcoded-token
+    description: "No hardcoded authentication tokens in source code"
+    grep_pattern: "Bearer [A-Za-z0-9._-]{20,}"
+
+  - id: auth-bypass
+    description: "No TODO/FIXME comments suggesting auth bypass"
+    grep_pattern: "TODO.*auth|FIXME.*auth|skip.*auth"

@@ -1,0 +1,42 @@
+# Dark Factory Configuration
+# Project-specific settings for the Dark Factory autonomous pipeline.
+# Edit this file to customize risk factors, ship model, and governance rules.
+
+# Project identity
+project_name: "MyProject"
+github_repo: "owner/repo"
+
+# Ship strategy: direct-commit | pr-creation | pr-label
+ship_model: "pr-creation"
+
+# Holdout directory (relative to project root)
+holdout_dir: ".dark-factory/holdouts"
+
+# Backlog file (relative to project root)
+backlog_file: ".dark-factory/backlog.md"
+
+# Backlog format: spec-only | issue+spec
+backlog_format: "issue+spec"
+
+# Governance ceiling for Ralph loop (only process tasks up to this tier)
+governance_ceiling: "T1"
+
+# Risk factors — customize these for your project
+# Each factor adds its score to the risk total when the pattern matches
+# the issue labels or layer name.
+risk_factors:
+  - pattern: "auth|login|session|jwt|token"
+    score: 30
+    label: "Auth/Security code"
+  - pattern: "payment|stripe|billing|invoice"
+    score: 30
+    label: "Payment processing"
+  - pattern: "migration|ALTER TABLE|CREATE TABLE"
+    score: 20
+    label: "Database migration"
+  - pattern: "api-contract|shared-types"
+    score: 20
+    label: "API contract change"
+  - pattern: "dependency|package.json|Podfile|build.gradle"
+    score: 15
+    label: "New dependency"
