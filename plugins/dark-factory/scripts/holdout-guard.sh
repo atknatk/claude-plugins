@@ -6,6 +6,17 @@
 
 INPUT=$(cat)
 
+# Fast targeted config load — only reads the 2 fields we need (not full config)
+_HG_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+_HG_PLUGIN_ROOT="$(cd "$_HG_SCRIPT_DIR/.." && pwd)"
+if [ -z "${DF_HOLDOUT_ALLOWED_AGENTS:-}" ] && [ -f "$_HG_PLUGIN_ROOT/lib/config.sh" ]; then
+  source "$_HG_PLUGIN_ROOT/lib/config.sh"
+  _hg_project_dir="$(resolve_project_dir)"
+  _hg_config="$_hg_project_dir/.dark-factory/config.yaml"
+  export DF_PROJECT_DIR="$_hg_project_dir"
+  export DF_HOLDOUT_ALLOWED_AGENTS="$(yaml_val "$_hg_config" "holdout_allowed_agents" "holdout-validator,satisfaction-judge")"
+fi
+
 # Extract ALL relevant fields (command, file_path, pattern, path) and join them
 # This prevents bypass via Glob tool where pattern and path are separate fields
 CMD=$(echo "$INPUT" | jq -r '
@@ -36,9 +47,10 @@ fi
 
 # Block READING holdout scenario content
 if echo "$CMD" | grep -qiE '\.dark-factory/holdouts/|dark-factory/holdouts|holdout\.yaml|holdout\.yml|\.holdout\.'; then
-  # Only holdout-validator and satisfaction-judge agents can access
+  # Config-driven allowed agents (DF_HOLDOUT_ALLOWED_AGENTS set by config.sh)
   AGENT_NAME=$(echo "$INPUT" | jq -r '.agent_name // ""' 2>/dev/null)
-  if [ "$AGENT_NAME" = "holdout-validator" ] || [ "$AGENT_NAME" = "satisfaction-judge" ]; then
+  ALLOWED="${DF_HOLDOUT_ALLOWED_AGENTS:-holdout-validator,satisfaction-judge}"
+  if [ -n "$AGENT_NAME" ] && echo ",$ALLOWED," | grep -qF ",$AGENT_NAME,"; then
     echo '{}'
     exit 0
   fi
@@ -55,8 +67,10 @@ if echo "$CMD" | grep -qiE '\.dark-factory/holdouts/|dark-factory/holdouts|holdo
     exit 0
   fi
 
-  # Marker file bypass — created before holdout validation, removed after
-  if [ -f "/tmp/.dark-factory-holdout-validate" ]; then
+  # Marker file bypass — project-scoped to prevent cross-project interference
+  PROJECT_HASH=$(echo "${DF_PROJECT_DIR:-unknown}" | (md5 2>/dev/null || md5sum 2>/dev/null) | cut -c1-8)
+  PROJECT_HASH="${PROJECT_HASH:-default}"
+  if [ -f "/tmp/.dark-factory-holdout-validate-${PROJECT_HASH}" ]; then
     echo '{}'
     exit 0
   fi

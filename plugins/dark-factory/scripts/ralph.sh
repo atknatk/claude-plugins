@@ -107,8 +107,8 @@ Output ONLY the spec file path (no backticks, no extra text).
 If no pending tasks exist, output exactly: EMPTY"
   fi
 
-  timeout 60 claude -p "$prompt" \
-    --max-budget-usd 0.50 \
+  timeout "${DF_SELECTION_TIMEOUT:-60}" claude -p "$prompt" \
+    --max-budget-usd "${DF_SELECTION_BUDGET:-0.50}" \
     --allowedTools "Read" \
     2>/dev/null || echo "EMPTY"
 }
@@ -118,12 +118,12 @@ update_backlog_status() {
   local new_status="$2"
   local session_id="$3"
 
-  timeout 60 claude -p "Edit the file $BACKLOG_FILE.
+  timeout "${DF_SELECTION_TIMEOUT:-60}" claude -p "Edit the file $BACKLOG_FILE.
 Find the row containing '$task_label' in the Queue table.
 Change its Status from 'pending' to '$new_status'.
 If status is 'completed', 'rejected', or 'no-op', move the row to the appropriate section (Completed or Rejected).
 Add session ID '$session_id' to the Session column." \
-    --max-budget-usd 0.50 \
+    --max-budget-usd "${DF_SELECTION_BUDGET:-0.50}" \
     --allowedTools "Read,Edit" \
     2>/dev/null || true
 }

@@ -53,3 +53,50 @@ risk_factors:
   - pattern: "dependency|package.json|Podfile|build.gradle"
     score: 15
     label: "New dependency"
+
+# --- Governance Tier Thresholds ---
+# Customize when each tier triggers. Defaults match standard Dark Factory governance.
+# tier_t0_max_risk: 15      # T0 auto-ship: risk must be below this
+# tier_t0_min_sat: 80       # T0 auto-ship: satisfaction must be at or above this
+# tier_t1_max_risk: 40
+# tier_t1_min_sat: 75
+# tier_t2_max_risk: 60
+# tier_t2_min_sat: 70
+# tier_blocked_min_sat: 50  # Below this (and > 0) → T4 blocked
+
+# --- Agent Budgets (USD) & Timeouts (seconds) ---
+# impl_budget: 10
+# impl_timeout: 2700
+# holdout_budget: 2
+# holdout_timeout: 300
+# sat_budget: 2
+# sat_timeout: 300
+
+# --- Tool Allowlists ---
+# impl_tools: "Read,Write,Edit,Grep,Glob,Bash,Agent"
+# holdout_tools: "Read,Grep,Glob,Bash"
+# sat_tools: "Read,Grep,Glob"
+
+# --- Custom Implementation ---
+# impl_prompt_file: ""       # Path to custom prompt file (relative to project root)
+# impl_agent: ""             # Named agent for implementation
+
+# --- Holdout Guard ---
+# holdout_allowed_agents: "holdout-validator,satisfaction-judge"
+
+# --- PR Labels ---
+# pr_label_review: "needs-review"
+# pr_label_arch_review: "architecture-review"
+# pr_label_pipeline: "agent:pipeline"
+# pr_label_factory: "dark-factory"
+
+# --- Issue Sync ---
+# issue_sync_label: "status:ready"
+
+# --- Commit & Git ---
+# commit_suffix: "[agent:dark-factory]"
+# base_branch: ""            # Empty = auto-detect; or "develop", "main", etc.
+
+# --- Task Selection (Ralph) ---
+# selection_timeout: 60
+# selection_budget: 0.50

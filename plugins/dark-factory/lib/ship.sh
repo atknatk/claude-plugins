@@ -76,13 +76,13 @@ ship_review() {
   local pr_url="$1" issue_number="$2" github_repo="$3"
   local decision="$4" governance_body="$5"
 
-  local label="needs-review"
-  [ "$decision" = "gated" ] && label="needs-review,architecture-review"
+  local label="${DF_PR_LABEL_REVIEW:-needs-review}"
+  [ "$decision" = "gated" ] && label="${DF_PR_LABEL_REVIEW:-needs-review},${DF_PR_LABEL_ARCH_REVIEW:-architecture-review}"
 
   ship_log "DEFERRED decision=$decision — PR labeled for human review"
   if [ -n "$pr_url" ]; then
-    gh_optional pr edit "$pr_url" --add-label "$label,dark-factory"
-    gh_optional pr edit "$pr_url" --remove-label "agent:pipeline"
+    gh_optional pr edit "$pr_url" --add-label "$label,${DF_PR_LABEL_FACTORY:-dark-factory}"
+    gh_optional pr edit "$pr_url" --remove-label "${DF_PR_LABEL_PIPELINE:-agent:pipeline}"
     gh_optional pr comment "$pr_url" --body "$governance_body"
     ship_log "Labeled PR for review: $pr_url (labels: $label)"
   else
@@ -102,7 +102,7 @@ ship_auto() {
 
   local merged=false
   if [ -n "$pr_url" ]; then
-    gh_optional pr edit "$pr_url" --add-label "agent:pipeline,dark-factory"
+    gh_optional pr edit "$pr_url" --add-label "${DF_PR_LABEL_PIPELINE:-agent:pipeline},${DF_PR_LABEL_FACTORY:-dark-factory}"
     gh_optional pr comment "$pr_url" --body "$governance_body"
 
     if [ "$decision" = "auto-ship" ]; then

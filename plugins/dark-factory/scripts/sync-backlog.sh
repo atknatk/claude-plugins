@@ -28,7 +28,7 @@ echo "Syncing GitHub issues to Dark Factory backlog for $DF_PROJECT_NAME..."
 mkdir -p "$SPECS_DIR"
 
 ISSUES=$(gh issue list -R "$DF_GITHUB_REPO" \
-  --label "status:ready" \
+  --label "${DF_ISSUE_SYNC_LABEL:-status:ready}" \
   --state open \
   --json number,title,body,labels \
   --limit 50 \

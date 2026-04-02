@@ -124,6 +124,52 @@ teardown() {
 }
 
 # ============================================================
+# determine_tier: config-driven thresholds
+# ============================================================
+
+@test "determine_tier: custom T0 thresholds widen auto-ship window" {
+  export DF_TIER_T0_MAX_RISK=25
+  export DF_TIER_T0_MIN_SAT=70
+  local result
+  result=$(determine_tier "true" 5 "true" 75 20)
+  [ "$result" = "T0|auto-ship" ]
+  unset DF_TIER_T0_MAX_RISK DF_TIER_T0_MIN_SAT
+}
+
+@test "determine_tier: custom blocked threshold raises floor" {
+  export DF_TIER_BLOCKED_MIN_SAT=60
+  local result
+  result=$(determine_tier "true" 5 "true" 55 10)
+  [ "$result" = "T4|blocked" ]
+  unset DF_TIER_BLOCKED_MIN_SAT
+}
+
+@test "determine_tier: custom T2 risk threshold changes gating boundary" {
+  export DF_TIER_T2_MAX_RISK=80
+  export DF_TIER_T1_MAX_RISK=50
+  local result
+  # risk=65 is now T2 (not T3) because T2 boundary raised to 80
+  result=$(determine_tier "true" 5 "true" 80 65)
+  [ "$result" = "T2|review-pr" ]
+  unset DF_TIER_T2_MAX_RISK DF_TIER_T1_MAX_RISK
+}
+
+@test "determine_tier: defaults match original hardcoded values" {
+  # Ensure no DF_TIER_* vars are set
+  unset DF_TIER_T0_MAX_RISK DF_TIER_T0_MIN_SAT DF_TIER_T1_MAX_RISK DF_TIER_T1_MIN_SAT DF_TIER_T2_MAX_RISK DF_TIER_T2_MIN_SAT DF_TIER_BLOCKED_MIN_SAT 2>/dev/null || true
+  local result
+  # T0: risk<15 AND sat>=80
+  result=$(determine_tier "true" 5 "true" 85 10)
+  [ "$result" = "T0|auto-ship" ]
+  # T1: risk<40 AND sat>=75
+  result=$(determine_tier "true" 5 "true" 78 25)
+  [ "$result" = "T1|auto-pr" ]
+  # T2: sat>=70
+  result=$(determine_tier "true" 5 "true" 72 20)
+  [ "$result" = "T2|review-pr" ]
+}
+
+# ============================================================
 # compute_risk_score
 # ============================================================
 

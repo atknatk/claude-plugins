@@ -105,10 +105,10 @@ echo "[$SESSION_ID] Layer: $LAYER | Pipeline: $PIPELINE" >> "$SESSION_DIR/run.lo
 # --- Step 2: Execute implementation ---
 echo "[$SESSION_ID] Launching claude -p for implementation..." >> "$SESSION_DIR/run.log"
 
-IMPL_TIMEOUT=2700   # 45 minutes
-IMPL_BUDGET=10      # $10 max per implementation agent
-HOLDOUT_BUDGET=2    # $2 max per holdout validation
-SAT_BUDGET=2        # $2 max per satisfaction judge
+IMPL_TIMEOUT="${DF_IMPL_TIMEOUT:-2700}"
+IMPL_BUDGET="${DF_IMPL_BUDGET:-10}"
+HOLDOUT_BUDGET="${DF_HOLDOUT_BUDGET:-2}"
+SAT_BUDGET="${DF_SAT_BUDGET:-2}"
 
 SPEC_SECTION=""
 if [ -f "$SESSION_DIR/spec.md" ]; then
@@ -134,7 +134,43 @@ if [ -n "$ISSUE_NUMBER" ]; then
   ISSUE_REF="This implements GitHub Issue #$ISSUE_NUMBER."
 fi
 
-timeout "$IMPL_TIMEOUT" claude -p "You are the $DF_PROJECT_NAME Dark Factory executor running in non-interactive mode.
+# Load custom implementation prompt if configured
+IMPL_PROMPT=""
+if [ -n "${DF_IMPL_PROMPT_FILE:-}" ]; then
+  CUSTOM_PATH="$DF_PROJECT_DIR/$DF_IMPL_PROMPT_FILE"
+  if [ -f "$CUSTOM_PATH" ]; then
+    # Export variables for envsubst (safe substitution, no regex issues)
+    export SESSION_ID LAYER PIPELINE SESSION_DIR
+    export ISSUE_NUMBER="${ISSUE_NUMBER:-}"
+    export DF_PROJECT_NAME DF_GITHUB_REPO
+    export DF_COMMIT_SUFFIX="${DF_COMMIT_SUFFIX:-[agent:dark-factory]}"
+    export DF_BASE_BRANCH="${DF_BASE_BRANCH:-}"
+    if command -v envsubst &>/dev/null; then
+      IMPL_PROMPT=$(envsubst < "$CUSTOM_PATH")
+    else
+      # Fallback: simple bash variable expansion via eval (restricted to known vars)
+      IMPL_PROMPT=$(cat "$CUSTOM_PATH")
+      IMPL_PROMPT="${IMPL_PROMPT//\$\{SESSION_ID\}/$SESSION_ID}"
+      IMPL_PROMPT="${IMPL_PROMPT//\$\{DF_PROJECT_NAME\}/$DF_PROJECT_NAME}"
+      IMPL_PROMPT="${IMPL_PROMPT//\$\{LAYER\}/$LAYER}"
+      IMPL_PROMPT="${IMPL_PROMPT//\$\{PIPELINE\}/$PIPELINE}"
+      IMPL_PROMPT="${IMPL_PROMPT//\$\{ISSUE_NUMBER\}/${ISSUE_NUMBER:-}}"
+      IMPL_PROMPT="${IMPL_PROMPT//\$\{SESSION_DIR\}/$SESSION_DIR}"
+      IMPL_PROMPT="${IMPL_PROMPT//\$\{DF_GITHUB_REPO\}/$DF_GITHUB_REPO}"
+      IMPL_PROMPT="${IMPL_PROMPT//\$\{DF_COMMIT_SUFFIX\}/${DF_COMMIT_SUFFIX:-[agent:dark-factory]}}"
+      IMPL_PROMPT="${IMPL_PROMPT//\$\{DF_BASE_BRANCH\}/${DF_BASE_BRANCH:-}}"
+    fi
+  fi
+fi
+
+# Determine branch target instruction
+BRANCH_TARGET="the default development branch (NEVER target 'main' directly)"
+if [ -n "${DF_BASE_BRANCH:-}" ]; then
+  BRANCH_TARGET="'${DF_BASE_BRANCH}' branch"
+fi
+
+if [ -z "$IMPL_PROMPT" ]; then
+  IMPL_PROMPT="You are the $DF_PROJECT_NAME Dark Factory executor running in non-interactive mode.
 Session: $SESSION_ID
 
 ## Instructions
@@ -148,8 +184,8 @@ Session: $SESSION_ID
    - Run all tests (coverage >= 80%)
    - If any step fails, attempt self-heal (max 2 retries)
 3. Use worktree isolation for implementation (git worktree)
-4. Commit with [agent:dark-factory] suffix
-5. Create PR targeting the default development branch (NEVER target 'main' directly)
+4. Commit with ${DF_COMMIT_SUFFIX:-[agent:dark-factory]} suffix
+5. Create PR targeting $BRANCH_TARGET
 6. Follow the pipeline type: $PIPELINE
 ${ISSUE_REF}
 
@@ -160,7 +196,7 @@ ${GUARDRAILS_SECTION}
 ## Important
 - ALWAYS create a PR. Do NOT merge the PR yourself — governance will handle merge decisions.
 - If the spec references a GitHub Issue, link it in the PR body with 'Closes #N'.
-- Add label 'dark-factory' to the PR.
+- Add label '${DF_PR_LABEL_FACTORY:-dark-factory}' to the PR.
 
 ## Output — CRITICAL
 At the very end of your response, you MUST write a machine-readable result block in EXACTLY this format:
@@ -178,9 +214,12 @@ Fields:
 
 This marker is parsed by automation. Do NOT omit it.
 
-Also write the result JSON to the file $SESSION_DIR/agent-result.json as a backup." \
+Also write the result JSON to the file $SESSION_DIR/agent-result.json as a backup."
+fi
+
+timeout "$IMPL_TIMEOUT" claude -p "$IMPL_PROMPT" \
   --max-budget-usd "$IMPL_BUDGET" \
-  --allowedTools "Read,Write,Edit,Grep,Glob,Bash,Agent" \
+  --allowedTools "${DF_IMPL_TOOLS:-Read,Write,Edit,Grep,Glob,Bash,Agent}" \
   2>"$SESSION_DIR/implementation-stderr.log" \
   >"$SESSION_DIR/implementation-result.txt"
 IMPL_EXIT=$?
@@ -248,11 +287,11 @@ Output results as JSON with fields: overall_pass (boolean), overall_score (numbe
   HOLDOUT_SCORE_SUM=0
   for run_i in $(seq 1 "$HOLDOUT_RUNS"); do
     echo "[$SESSION_ID] Holdout run $run_i/$HOLDOUT_RUNS..." >> "$SESSION_DIR/run.log"
-    HOLDOUT_VALIDATOR_MODE=true timeout 300 claude -p "$HOLDOUT_BASE_PROMPT
+    HOLDOUT_VALIDATOR_MODE=true timeout "${DF_HOLDOUT_TIMEOUT:-300}" claude -p "$HOLDOUT_BASE_PROMPT
 
 This is validation run $run_i of $HOLDOUT_RUNS. Evaluate independently — do not assume prior results." \
       --max-budget-usd "$HOLDOUT_PER_RUN_BUDGET" \
-      --allowedTools "Read,Grep,Glob,Bash" \
+      --allowedTools "${DF_HOLDOUT_TOOLS:-Read,Grep,Glob,Bash}" \
       2>"$SESSION_DIR/holdout-run${run_i}-stderr.log" \
       >"$SESSION_DIR/holdout-run${run_i}.json" || true
 
@@ -304,7 +343,7 @@ elif [ -f "$SESSION_DIR/issue.json" ]; then
   SAT_SPEC_REF="Read the issue body from $SESSION_DIR/issue.json for requirements."
 fi
 
-timeout 300 claude -p "You are the satisfaction-judge agent for the $DF_PROJECT_NAME Dark Factory.
+timeout "${DF_SAT_TIMEOUT:-300}" claude -p "You are the satisfaction-judge agent for the $DF_PROJECT_NAME Dark Factory.
 Session: $SESSION_ID
 
 Read the agent instructions from the satisfaction-judge agent definition.
@@ -318,7 +357,7 @@ Evaluate the implementation for ${SPEC_FILE:-Issue #$ISSUE_NUMBER} (layer: $LAYE
 5. Output final score and decision as JSON with fields: final_score (number), composite_score (number), dimensions (object), verdict (string)
 6. Also write the result JSON to $SESSION_DIR/satisfaction-parsed.json as a backup" \
   --max-budget-usd "$SAT_BUDGET" \
-  --allowedTools "Read,Grep,Glob" \
+  --allowedTools "${DF_SAT_TOOLS:-Read,Grep,Glob}" \
   2>"$SESSION_DIR/satisfaction-stderr.log" \
   >"$SESSION_DIR/satisfaction-result.json" || true
 

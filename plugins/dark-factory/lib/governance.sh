@@ -181,11 +181,16 @@ compute_risk_score() {
 # Usage: determine_tier <impl_success> <files_int> <holdout_pass> <sat_int> <risk_score>
 # Output: TIER|DECISION (e.g. "T0|auto-ship")
 determine_tier() {
-  local impl_success="$1"
-  local files_int="$2"
-  local holdout_pass="$3"
-  local sat_int="$4"
-  local risk_score="$5"
+  local impl_success="$1" files_int="$2" holdout_pass="$3" sat_int="$4" risk_score="$5"
+
+  # Thresholds from config (DF_TIER_* set by config.sh, defaults match original values)
+  local t0_max_risk="${DF_TIER_T0_MAX_RISK:-15}"
+  local t0_min_sat="${DF_TIER_T0_MIN_SAT:-80}"
+  local t1_max_risk="${DF_TIER_T1_MAX_RISK:-40}"
+  local t1_min_sat="${DF_TIER_T1_MIN_SAT:-75}"
+  local t2_max_risk="${DF_TIER_T2_MAX_RISK:-60}"
+  local t2_min_sat="${DF_TIER_T2_MIN_SAT:-70}"
+  local blocked_min_sat="${DF_TIER_BLOCKED_MIN_SAT:-50}"
 
   # No-op detection
   if [ "$impl_success" = "true" ] && [ "$files_int" -eq 0 ]; then
@@ -202,31 +207,31 @@ determine_tier() {
     echo "T4|blocked"
     return
   fi
-  if [ "$sat_int" -lt 50 ] && [ "$sat_int" -ne 0 ]; then
+  if [ "$sat_int" -lt "$blocked_min_sat" ] && [ "$sat_int" -ne 0 ]; then
     echo "T4|blocked"
     return
   fi
 
   # Risk-based tiers
-  if [ "$risk_score" -gt 60 ]; then
+  if [ "$risk_score" -gt "$t2_max_risk" ]; then
     echo "T3|gated"
     return
   fi
-  if [ "$risk_score" -gt 40 ]; then
+  if [ "$risk_score" -gt "$t1_max_risk" ]; then
     echo "T2|review-pr"
     return
   fi
 
   # Satisfaction-based tiers
-  if [ "$sat_int" -ge 80 ] && [ "$risk_score" -lt 15 ]; then
+  if [ "$sat_int" -ge "$t0_min_sat" ] && [ "$risk_score" -lt "$t0_max_risk" ]; then
     echo "T0|auto-ship"
     return
   fi
-  if [ "$sat_int" -ge 75 ] && [ "$risk_score" -lt 40 ]; then
+  if [ "$sat_int" -ge "$t1_min_sat" ] && [ "$risk_score" -lt "$t1_max_risk" ]; then
     echo "T1|auto-pr"
     return
   fi
-  if [ "$sat_int" -ge 70 ]; then
+  if [ "$sat_int" -ge "$t2_min_sat" ]; then
     echo "T2|review-pr"
     return
   fi
