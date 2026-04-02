@@ -71,6 +71,9 @@ rl_check() {
   local elapsed=$((now - hour_start))
   local remaining=$((3600 - elapsed))
 
+  # Clamp to minimum 1 second to avoid sleep errors
+  [ "$remaining" -le 0 ] && remaining=1
+
   # Check call limit
   if [ "$calls" -ge "$max_calls" ]; then
     echo "$remaining"
