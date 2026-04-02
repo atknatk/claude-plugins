@@ -58,6 +58,22 @@ parse_json_field() {
   val=$(jq -r ".$field // empty" "$file" 2>/dev/null)
   if [ -n "$val" ] && [ "$val" != "null" ]; then echo "$val"; return; fi
 
+  # Try 1b: Extract JSON from markdown code blocks (```json ... ```)
+  local md_json=""
+  md_json=$(sed -n '/^```json *$/,/^```$/p' "$file" 2>/dev/null | sed '1d;$d')
+  if [ -n "$md_json" ]; then
+    val=$(echo "$md_json" | jq -r ".$field // empty" 2>/dev/null)
+    if [ -n "$val" ] && [ "$val" != "null" ]; then echo "$val"; return; fi
+  fi
+
+  # Try 1c: Search raw text for JSON object containing the field
+  local raw_json=""
+  raw_json=$(grep -oE "\{[^}]*\"$field\"[[:space:]]*:[^}]*\}" "$file" 2>/dev/null | head -1)
+  if [ -n "$raw_json" ]; then
+    val=$(echo "$raw_json" | jq -r ".$field // empty" 2>/dev/null)
+    if [ -n "$val" ] && [ "$val" != "null" ]; then echo "$val"; return; fi
+  fi
+
   # Try 2: Extract from claude -p wrapper JSON (.result field)
   val=$(jq -r '.result // empty' "$file" 2>/dev/null)
   if [ -n "$val" ]; then

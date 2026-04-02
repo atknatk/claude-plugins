@@ -67,7 +67,7 @@ if [ -n "$SPEC_FILE" ]; then
   cp "$SPEC_PATH" "$SESSION_DIR/spec-full.md"
 
   if [ -z "$ISSUE_NUMBER" ]; then
-    ISSUE_NUMBER=$(grep -oE '#[0-9]+' "$SPEC_PATH" | head -1 | tr -d '#')
+    ISSUE_NUMBER=$(grep -oE '#[0-9]+' "$SPEC_PATH" | head -1 | tr -d '#' || true)
   fi
 fi
 
@@ -402,6 +402,10 @@ for sat_file in "$SESSION_DIR/satisfaction-parsed.json" "$SESSION_DIR/satisfacti
   done
 done
 
+# Satisfaction score may be 0-10 scale (from satisfaction agent) — normalize to 0-100
+if echo "$SATISFACTION_SCORE" | grep -qE '^[0-9]+\.?[0-9]*$' && [ "$(echo "$SATISFACTION_SCORE <= 10" | bc -l 2>/dev/null)" = "1" ] && [ "$SATISFACTION_SCORE" != "0" ]; then
+  SATISFACTION_SCORE=$(echo "$SATISFACTION_SCORE * 10" | bc -l 2>/dev/null | sed 's/\..*//')
+fi
 SAT_INT=$(safe_int "$SATISFACTION_SCORE")
 HOLDOUT_INT=$(safe_int "$HOLDOUT_SCORE")
 FILES_INT=$(safe_int "$FILES_CHANGED")
