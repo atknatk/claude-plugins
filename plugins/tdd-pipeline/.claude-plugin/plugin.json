@@ -1,0 +1,8 @@
+{
+  "name": "tdd-pipeline",
+  "version": "1.0.0",
+  "description": "TDD pipeline agents: tester (test-first), reviewer (quality gates), and UI polish. Generic agents for test-driven development workflows.",
+  "author": { "name": "Everva" },
+  "repository": "https://github.com/everva/claude-plugins",
+  "keywords": ["tdd", "testing", "review", "quality", "pipeline", "coverage"]
+}

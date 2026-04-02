@@ -1,0 +1,8 @@
+{
+  "name": "mobile-agents",
+  "version": "1.0.0",
+  "description": "iOS and Android UI specialist agents for mobile development quality gates. HIG compliance for iOS, Material Design 3 for Android.",
+  "author": { "name": "Everva" },
+  "repository": "https://github.com/everva/claude-plugins",
+  "keywords": ["mobile", "ios", "android", "swiftui", "compose", "hig", "material-design"]
+}
