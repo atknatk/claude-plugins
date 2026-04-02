@@ -18,6 +18,8 @@ This registers the Everva marketplace so you can install any plugin from it.
 
 ```bash
 /plugin install dark-factory@everva    # Autonomous AI pipeline
+/plugin install mobile-agents@everva   # iOS HIG + Android M3 specialists
+/plugin install tdd-pipeline@everva    # TDD tester + reviewer + UI polish
 /plugin install code-review@everva     # Code review with auto-fix
 ```
 
@@ -34,7 +36,30 @@ That's it. The plugin's skills, agents, and hooks are now available in your Clau
 | Plugin | Description | Skills | Install |
 | --- | --- | --- | --- |
 | [dark-factory](plugins/dark-factory/) | Autonomous AI development pipeline with governance tiers, holdout validation, satisfaction testing, and Ralph Wiggum loop | `/dark-factory:factory`, `/dark-factory:task`, `/dark-factory:readiness`, `/dark-factory:dashboard`, `/dark-factory:init` | `/plugin install dark-factory@everva` |
+| [mobile-agents](plugins/mobile-agents/) | iOS and Android UI specialist agents — HIG compliance, Material Design 3, accessibility gates | Agents: `ios-ui-specialist`, `android-ui-specialist` | `/plugin install mobile-agents@everva` |
+| [tdd-pipeline](plugins/tdd-pipeline/) | TDD pipeline agents — test-first tester, code reviewer, UI polish | Agents: `tester`, `reviewer`, `ui-polish` | `/plugin install tdd-pipeline@everva` |
 | [code-review](plugins/code-review/) | Multi-session code review with isolated reviewer sessions and auto-fix loop | `/code-review:review`, `/code-review:review-fix` | `/plugin install code-review@everva` |
+
+## Lego Architecture
+
+Plugins are composable building blocks. Pick what your project needs:
+
+```text
+Full-stack mobile project:        Backend-only project:       iOS-only app:
+  dark-factory                      dark-factory                mobile-agents
+  mobile-agents                     tdd-pipeline                tdd-pipeline
+  tdd-pipeline                      code-review                 code-review
+  + project-specific agents         + project-specific agents
+```
+
+Plugin agents are **generic** — they read your project's `CLAUDE.md` for context. Override any agent by placing a same-named `.md` file in your project's `.claude/agents/` directory.
+
+| Layer | Plugin | What it provides |
+| --- | --- | --- |
+| Pipeline & Governance | `dark-factory` | Ralph loop, holdout validation, satisfaction judge, governance tiers, rate limiting, circuit breaker |
+| Mobile Quality | `mobile-agents` | iOS HIG compliance, Android Material Design 3, accessibility gates |
+| TDD & Review | `tdd-pipeline` | Test-first tester, code reviewer, UI polish agent |
+| Code Review | `code-review` | Isolated review sessions, auto-fix loop |
 
 ## Quick Start: Dark Factory
 
@@ -78,6 +103,32 @@ See [Dark Factory README](plugins/dark-factory/README.md) for full documentation
 
 See [Code Review README](plugins/code-review/README.md) for full documentation.
 
+## Quick Start: Mobile Agents
+
+```bash
+# 1. Install
+/plugin install mobile-agents@everva
+
+# 2. Agents are now available for spawning
+# ios-ui-specialist — HIG compliance, VoiceOver, Dynamic Type
+# android-ui-specialist — Material Design 3, TalkBack, Compose patterns
+
+# 3. Override for your project (optional)
+# Place a custom version in .claude/agents/ios-ui-specialist.md
+```
+
+## Quick Start: TDD Pipeline
+
+```bash
+# 1. Install
+/plugin install tdd-pipeline@everva
+
+# 2. Agents are now available for spawning
+# tester — writes tests FIRST (TDD), coverage >= 80%
+# reviewer — code quality gates, security checklist
+# ui-polish — cross-platform consistency, micro-interactions
+```
+
 ## Using Plugins in Your Project
 
 ### Global Installation (all projects)
@@ -93,6 +144,8 @@ Add to `~/.claude/settings.json`:
   },
   "enabledPlugins": {
     "dark-factory@everva": true,
+    "mobile-agents@everva": true,
+    "tdd-pipeline@everva": true,
     "code-review@everva": true
   }
 }
