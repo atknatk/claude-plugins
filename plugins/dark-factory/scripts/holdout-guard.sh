@@ -45,8 +45,11 @@ if [ "$TOOL_NAME" = "Bash" ]; then
   fi
 fi
 
-# Block READING holdout scenario content
-if echo "$CMD" | grep -qiE '\.dark-factory/holdouts/|dark-factory/holdouts|holdout\.yaml|holdout\.yml|\.holdout\.'; then
+# Block READING holdout scenario content:
+# 1. .dark-factory/holdouts/ YAML files
+# 2. spec-full.md (contains holdout section, only for holdout validator)
+# 3. .intent.md files (contain inline ## Holdout Scenarios — agent must use stripped spec.md instead)
+if echo "$CMD" | grep -qiE '\.dark-factory/holdouts/|dark-factory/holdouts|holdout\.yaml|holdout\.yml|\.holdout\.|spec-full\.md|\.intent\.md'; then
   # Config-driven allowed agents (DF_HOLDOUT_ALLOWED_AGENTS set by config.sh)
   AGENT_NAME=$(echo "$INPUT" | jq -r '.agent_name // ""' 2>/dev/null)
   ALLOWED="${DF_HOLDOUT_ALLOWED_AGENTS:-holdout-validator,satisfaction-judge}"
