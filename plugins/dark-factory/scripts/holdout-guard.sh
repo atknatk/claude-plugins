@@ -17,32 +17,29 @@ if [ -z "${DF_HOLDOUT_ALLOWED_AGENTS:-}" ] && [ -f "$_HG_PLUGIN_ROOT/lib/config.
   export DF_HOLDOUT_ALLOWED_AGENTS="$(yaml_val "$_hg_config" "holdout_allowed_agents" "holdout-validator,satisfaction-judge")"
 fi
 
-# Extract ALL relevant fields (command, file_path, pattern, path) and join them
-# This prevents bypass via Glob tool where pattern and path are separate fields
-CMD=$(echo "$INPUT" | jq -r '
-  [.tool_input.command, .tool_input.file_path, .tool_input.pattern, .tool_input.path]
-  | map(select(. != null and . != ""))
-  | join(" ")' 2>/dev/null)
-
-# Allow directory creation and management (mkdir, ls, touch, chmod)
+# Extract tool name
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null)
-if [ "$TOOL_NAME" = "Bash" ]; then
-  if echo "$CMD" | grep -qE '^mkdir |^ls |^touch |^chmod '; then
-    echo '{}'
-    exit 0
-  fi
-fi
 
-# Skip non-reading Bash commands (git, etc.) — only block file reads
+# For Read/Grep/Glob: check file_path, pattern, path fields (precise targeting)
+# For Bash: check if command actually reads a holdout file (cat, head, tail, etc.)
 if [ "$TOOL_NAME" = "Bash" ]; then
-  if echo "$CMD" | grep -qE '^git '; then
+  BASH_CMD=$(echo "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null)
+
+  # Allow non-reading commands (git, mkdir, build, etc.)
+  # Only check commands that actually read file contents
+  if ! echo "$BASH_CMD" | grep -qE 'cat |head |tail |less |more |bat '; then
     echo '{}'
     exit 0
   fi
-  if ! echo "$CMD" | grep -qE 'cat |head |tail |less |more |bat |source |\.[ ]'; then
-    echo '{}'
-    exit 0
-  fi
+
+  # For reading commands, check if the TARGET FILE is a holdout file
+  CMD="$BASH_CMD"
+else
+  # For Read/Grep/Glob: check file_path, pattern, path
+  CMD=$(echo "$INPUT" | jq -r '
+    [.tool_input.file_path, .tool_input.pattern, .tool_input.path]
+    | map(select(. != null and . != ""))
+    | join(" ")' 2>/dev/null)
 fi
 
 # Block READING holdout scenario content:

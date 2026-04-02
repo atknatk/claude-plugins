@@ -278,7 +278,12 @@ extract_layer() {
   layer=$(echo "$labels" | tr ',' '\n' | grep '^layer:' | head -1 | cut -d: -f2 || true)
 
   if [ -z "$layer" ] && [ -n "$spec_file" ]; then
-    layer=$(basename "$spec_file" | sed 's/-.*//')
+    # Extract layer from directory path: docs/specs/{layer}/M-xxx.intent.md → layer
+    layer=$(echo "$spec_file" | sed -n 's|.*/specs/\([^/]*\)/.*|\1|p')
+    # Fallback: try basename prefix (for flat paths like backend-auth.intent.md)
+    if [ -z "$layer" ]; then
+      layer=$(basename "$spec_file" | sed 's/-.*//')
+    fi
   fi
 
   echo "${layer:-backend}"
