@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Everva Claude Code Plugin Marketplace — Dark Factory, Code Review, and more.",
-    "version": "1.1.0"
+    "version": "1.2.0"
   },
   "plugins": [
     {
@@ -16,9 +16,25 @@
       "name": "dark-factory",
       "source": "./plugins/dark-factory",
       "description": "Dark Factory: Autonomous AI development pipeline with governance tiers, holdout validation, satisfaction judging, and Ralph Wiggum loop.",
-      "version": "1.0.0",
+      "version": "1.2.0",
       "category": "automation",
       "tags": ["dark-factory", "autonomous", "pipeline", "governance", "holdout"]
+    },
+    {
+      "name": "mobile-agents",
+      "source": "./plugins/mobile-agents",
+      "description": "iOS and Android UI specialist agents — HIG compliance, Material Design 3, accessibility gates.",
+      "version": "1.0.0",
+      "category": "agents",
+      "tags": ["mobile", "ios", "android", "swiftui", "compose", "hig", "material-design"]
+    },
+    {
+      "name": "tdd-pipeline",
+      "source": "./plugins/tdd-pipeline",
+      "description": "TDD pipeline agents: tester (test-first), reviewer (quality gates), and UI polish.",
+      "version": "1.0.0",
+      "category": "agents",
+      "tags": ["tdd", "testing", "review", "quality", "pipeline", "coverage"]
     }
   ]
 }
