@@ -24,6 +24,7 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$PLUGIN_ROOT/lib/config.sh"
 source "$PLUGIN_ROOT/lib/governance.sh"
 source "$PLUGIN_ROOT/lib/ship.sh"
+source "$PLUGIN_ROOT/lib/rate_limiter.sh"
 
 load_project_config
 
@@ -67,7 +68,8 @@ if [ -n "$SPEC_FILE" ]; then
   cp "$SPEC_PATH" "$SESSION_DIR/spec-full.md"
 
   if [ -z "$ISSUE_NUMBER" ]; then
-    ISSUE_NUMBER=$(grep -oE '#[0-9]+' "$SPEC_PATH" | head -1 | tr -d '#' || true)
+    # Match standalone issue refs like "Issue #42" or "Closes #42", not hex colors like #94A3B8
+    ISSUE_NUMBER=$(grep -oE '(^|[[:space:]])#[0-9]+([[:space:]]|$)' "$SPEC_PATH" | head -1 | tr -d '#[:space:]' || true)
   fi
 fi
 
@@ -220,20 +222,36 @@ This marker is parsed by automation. Do NOT omit it.
 Also write the result JSON to the file $SESSION_DIR/agent-result.json as a backup."
 fi
 
-timeout "$IMPL_TIMEOUT" claude -p "$IMPL_PROMPT" \
+# Run implementation (macOS lacks setsid; use timeout alone — it signals the process group)
+timeout --kill-after=30 "$IMPL_TIMEOUT" claude -p "$IMPL_PROMPT" \
   --max-budget-usd "$IMPL_BUDGET" \
   --allowedTools "${DF_IMPL_TOOLS:-Read,Write,Edit,Grep,Glob,Bash,Agent}" \
   2>"$SESSION_DIR/implementation-stderr.log" \
   >"$SESSION_DIR/implementation-result.txt"
 IMPL_EXIT=$?
 
-if [ "$IMPL_EXIT" -eq 124 ]; then
+# Kill any remaining child processes from this session
+pkill -P $$ -f "claude" 2>/dev/null || true
+
+if [ "$IMPL_EXIT" -eq 124 ] || [ "$IMPL_EXIT" -eq 137 ]; then
   echo "[$SESSION_ID] TIMEOUT: Implementation agent killed after ${IMPL_TIMEOUT}s" >> "$SESSION_DIR/run.log"
   echo '<!-- DARK_FACTORY_RESULT:{"success":false,"layer":"'"$LAYER"'","files_changed":0,"tests_passed":0,"tests_total":0,"coverage":0,"pr_url":null,"error":"timeout after '"${IMPL_TIMEOUT}"'s"} -->' > "$SESSION_DIR/implementation-result.txt"
 fi
 
 # Check for subscription rate limit ("You've hit your limit · resets Xam/pm")
+# Also check stderr and empty result (rate limit can produce 0-byte output)
+_rl_detected=false
 if WAIT_SECS=$(rl_is_rate_limited "$SESSION_DIR/implementation-result.txt"); then
+  _rl_detected=true
+elif WAIT_SECS=$(rl_is_rate_limited "$SESSION_DIR/implementation-stderr.log"); then
+  _rl_detected=true
+elif [ "$IMPL_EXIT" -ne 0 ] && [ ! -s "$SESSION_DIR/implementation-result.txt" ]; then
+  # Empty result + non-zero exit = likely rate limited (claude -p returns nothing)
+  echo "[$SESSION_ID] WARNING: Empty result with exit=$IMPL_EXIT — possible rate limit" >> "$SESSION_DIR/run.log"
+  WAIT_SECS=3600  # Default 1h wait
+  _rl_detected=true
+fi
+if [ "$_rl_detected" = "true" ]; then
   echo "[$SESSION_ID] RATE LIMITED: Subscription limit hit. Waiting ${WAIT_SECS}s for reset." >> "$SESSION_DIR/run.log"
   echo '<!-- DARK_FACTORY_RESULT:{"success":false,"layer":"'"$LAYER"'","files_changed":0,"tests_passed":0,"tests_total":0,"coverage":0,"pr_url":null,"error":"rate_limited"} -->' > "$SESSION_DIR/implementation-result.txt"
   echo "rate_limited"
@@ -340,6 +358,137 @@ This is validation run $run_i of $HOLDOUT_RUNS. Evaluate independently — do no
     > "$SESSION_DIR/holdout-result.json"
 else
   echo '{"overall_pass": true, "overall_score": 100, "note": "No holdout scenarios found"}' > "$SESSION_DIR/holdout-result.json"
+fi
+
+# --- Step 3b: Holdout retry-with-feedback loop ---
+# If holdout failed, extract failed scenario TITLES (not content) and give developer
+# a chance to fix the gaps. Max DF_HOLDOUT_RETRIES iterations.
+HOLDOUT_RETRIES="${DF_HOLDOUT_RETRIES:-2}"
+HOLDOUT_RETRY_BUDGET="${DF_HOLDOUT_RETRY_BUDGET:-5}"
+HOLDOUT_RETRY_COUNT=0
+
+while [ "$HOLDOUT_QUORUM_PASS" = "false" ] && [ "$HOLDOUT_RETRY_COUNT" -lt "$HOLDOUT_RETRIES" ]; do
+  HOLDOUT_RETRY_COUNT=$((HOLDOUT_RETRY_COUNT + 1))
+  echo "[$SESSION_ID] Holdout retry $HOLDOUT_RETRY_COUNT/$HOLDOUT_RETRIES — extracting failed scenario titles..." >> "$SESSION_DIR/run.log"
+
+  # Extract ONLY the titles/IDs of failed scenarios (never the content/evidence)
+  FAILED_TITLES=""
+  for run_i in $(seq 1 "$HOLDOUT_RUNS"); do
+    rf="$SESSION_DIR/holdout-run${run_i}.json"
+    [ -f "$rf" ] || continue
+    # Extract id/title fields where pass=false — only category hints, no scenario details
+    run_fails=$(python3 -c "
+import json, re
+text = open('$rf').read()
+for m in re.finditer(r'\{[^{}]*\"pass\"\s*:\s*false[^{}]*\}', text):
+    try:
+        obj = json.loads(m.group())
+        title = obj.get('id', obj.get('title', ''))
+        if title:
+            # Strip implementation details, keep only category name
+            print(title.replace('-', ' '))
+    except: pass
+" 2>/dev/null || true)
+    if [ -n "$run_fails" ]; then
+      FAILED_TITLES="$FAILED_TITLES
+$run_fails"
+    fi
+  done
+
+  # Deduplicate
+  FAILED_TITLES=$(echo "$FAILED_TITLES" | sort -u | grep -v '^$' | head -10)
+
+  if [ -z "$FAILED_TITLES" ]; then
+    echo "[$SESSION_ID] Could not extract failed scenario titles, skipping retry" >> "$SESSION_DIR/run.log"
+    break
+  fi
+
+  echo "[$SESSION_ID] Failed categories: $FAILED_TITLES" >> "$SESSION_DIR/run.log"
+
+  # Run developer fix agent with category-level feedback (no holdout content)
+  RETRY_PROMPT="You are a developer fixing gaps found during quality validation.
+Session: $SESSION_ID
+Layer: $LAYER
+
+The implementation was validated and the following CATEGORIES of behavior were found lacking.
+You do NOT know the exact test scenarios — only the category names.
+Read the existing code, identify gaps in these areas, and fix them.
+
+## Failed categories (improve these areas):
+$(echo "$FAILED_TITLES" | sed 's/^/- /')
+
+## Instructions:
+1. Read the current implementation files
+2. For each failed category, identify what behavior might be missing or incomplete
+3. Add missing error handling, edge cases, localization, offline support as needed
+4. Do NOT break existing tests
+5. Run build + test to verify
+
+HOLDOUT YASAK: .dark-factory/holdouts/ ve docs/specs/*.intent.md dosyalarini OKUMA."
+
+  echo "[$SESSION_ID] Running developer fix agent (retry $HOLDOUT_RETRY_COUNT)..." >> "$SESSION_DIR/run.log"
+  timeout "${DF_IMPL_TIMEOUT:-7200}" claude -p "$RETRY_PROMPT" \
+    --max-budget-usd "$HOLDOUT_RETRY_BUDGET" \
+    --allowedTools "${DF_IMPL_TOOLS:-Read,Write,Edit,Grep,Glob,Bash,Agent}" \
+    2>"$SESSION_DIR/holdout-retry${HOLDOUT_RETRY_COUNT}-stderr.log" \
+    >"$SESSION_DIR/holdout-retry${HOLDOUT_RETRY_COUNT}-result.txt" || true
+
+  # Check for rate limit on retry
+  if rl_is_rate_limited "$SESSION_DIR/holdout-retry${HOLDOUT_RETRY_COUNT}-result.txt" >/dev/null 2>&1; then
+    echo "[$SESSION_ID] Rate limited during holdout retry" >> "$SESSION_DIR/run.log"
+    break
+  fi
+
+  echo "[$SESSION_ID] Developer fix complete, re-running holdout..." >> "$SESSION_DIR/run.log"
+
+  # Re-run holdout validation
+  HOLDOUT_PASS_COUNT=0
+  HOLDOUT_SCORE_SUM=0
+  for run_i in $(seq 1 "$HOLDOUT_RUNS"); do
+    echo "[$SESSION_ID] Holdout re-run $run_i/$HOLDOUT_RUNS (retry $HOLDOUT_RETRY_COUNT)..." >> "$SESSION_DIR/run.log"
+    HOLDOUT_VALIDATOR_MODE=true timeout "${DF_HOLDOUT_TIMEOUT:-300}" claude -p "$HOLDOUT_BASE_PROMPT
+
+This is validation run $run_i of $HOLDOUT_RUNS (retry attempt $HOLDOUT_RETRY_COUNT). Evaluate independently." \
+      --max-budget-usd "$HOLDOUT_PER_RUN_BUDGET" \
+      --allowedTools "${DF_HOLDOUT_TOOLS:-Read,Grep,Glob,Bash}" \
+      2>"$SESSION_DIR/holdout-retry${HOLDOUT_RETRY_COUNT}-run${run_i}-stderr.log" \
+      >"$SESSION_DIR/holdout-retry${HOLDOUT_RETRY_COUNT}-run${run_i}.json" || true
+
+    RUN_PASS=$(parse_json_field "$SESSION_DIR/holdout-retry${HOLDOUT_RETRY_COUNT}-run${run_i}.json" "overall_pass" "false")
+    RUN_SCORE=$(parse_json_field "$SESSION_DIR/holdout-retry${HOLDOUT_RETRY_COUNT}-run${run_i}.json" "overall_score" "0")
+    RUN_SCORE_INT=$(safe_int "$RUN_SCORE")
+
+    if [ "$RUN_PASS" = "true" ] && [ "$RUN_SCORE_INT" -ge "$HOLDOUT_THRESHOLD" ]; then
+      HOLDOUT_PASS_COUNT=$((HOLDOUT_PASS_COUNT + 1))
+    fi
+    HOLDOUT_SCORE_SUM=$((HOLDOUT_SCORE_SUM + RUN_SCORE_INT))
+    echo "[$SESSION_ID] Holdout re-run $run_i: pass=$RUN_PASS score=$RUN_SCORE_INT" >> "$SESSION_DIR/run.log"
+  done
+
+  HOLDOUT_AVG_SCORE=$((HOLDOUT_SCORE_SUM / HOLDOUT_RUNS))
+  if [ "$HOLDOUT_PASS_COUNT" -ge "$HOLDOUT_QUORUM" ]; then
+    HOLDOUT_QUORUM_PASS="true"
+  else
+    HOLDOUT_QUORUM_PASS="false"
+  fi
+
+  echo "[$SESSION_ID] Holdout retry $HOLDOUT_RETRY_COUNT result: $HOLDOUT_PASS_COUNT/$HOLDOUT_RUNS passed, avg=$HOLDOUT_AVG_SCORE" >> "$SESSION_DIR/run.log"
+
+  # Update holdout result file
+  jq -n \
+    --argjson overall_pass "$HOLDOUT_QUORUM_PASS" \
+    --argjson overall_score "$HOLDOUT_AVG_SCORE" \
+    --argjson runs "$HOLDOUT_RUNS" \
+    --argjson passes "$HOLDOUT_PASS_COUNT" \
+    --argjson quorum "$HOLDOUT_QUORUM" \
+    --argjson threshold "$HOLDOUT_THRESHOLD" \
+    --argjson retries "$HOLDOUT_RETRY_COUNT" \
+    '{overall_pass:$overall_pass, overall_score:$overall_score, runs:$runs, passes:$passes, quorum:$quorum, threshold:$threshold, retries:$retries}' \
+    > "$SESSION_DIR/holdout-result.json"
+done
+
+if [ "$HOLDOUT_RETRY_COUNT" -gt 0 ]; then
+  echo "[$SESSION_ID] Holdout retry summary: $HOLDOUT_RETRY_COUNT retries, final pass=$HOLDOUT_QUORUM_PASS score=$HOLDOUT_AVG_SCORE" >> "$SESSION_DIR/run.log"
 fi
 
 echo "[$SESSION_ID] Holdout validation complete" >> "$SESSION_DIR/run.log"

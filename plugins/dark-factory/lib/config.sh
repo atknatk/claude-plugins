@@ -94,6 +94,8 @@ load_project_config() {
     export DF_HOLDOUT_BUDGET="$(yaml_val "$config_file" "holdout_budget" "2")"
     export DF_SAT_BUDGET="$(yaml_val "$config_file" "sat_budget" "2")"
     export DF_HOLDOUT_TIMEOUT="$(yaml_val "$config_file" "holdout_timeout" "300")"
+    export DF_HOLDOUT_RETRIES="$(yaml_val "$config_file" "holdout_retries" "2")"
+    export DF_HOLDOUT_RETRY_BUDGET="$(yaml_val "$config_file" "holdout_retry_budget" "5")"
     export DF_SAT_TIMEOUT="$(yaml_val "$config_file" "sat_timeout" "300")"
 
     # Tool allowlists
