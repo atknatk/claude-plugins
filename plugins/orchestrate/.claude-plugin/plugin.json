@@ -1,0 +1,18 @@
+{
+  "name": "orchestrate",
+  "version": "1.0.0",
+  "description": "Orchestrator skill — never does work itself, always dispatches Opus subagents (architect → tester → developer → reviewer). Two modes: interactive (at-keyboard) and away (overnight cron triage).",
+  "author": {
+    "name": "Everva"
+  },
+  "repository": "https://github.com/everva/claude-plugins",
+  "keywords": [
+    "orchestration",
+    "subagents",
+    "opus",
+    "overnight",
+    "cron",
+    "production-grade",
+    "review-gate"
+  ]
+}
