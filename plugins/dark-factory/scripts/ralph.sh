@@ -38,7 +38,10 @@ source "$PLUGIN_ROOT/lib/rate_limiter.sh"
 # --- Configuration ---
 MAX_ITERATIONS="${1:-5}"
 MAX_DURATION_HOURS="${2:-6}"
-MAX_DURATION_SECONDS=$((MAX_DURATION_HOURS * 3600))
+# Float-capable hours -> seconds (supports fractional hours like 1.5 / 0.5).
+# Bash $(( )) is integer-only and crashes on decimals; use awk and fall back
+# to the 6h default on empty/garbage input.
+MAX_DURATION_SECONDS=$(awk -v h="$MAX_DURATION_HOURS" 'BEGIN{ if (h+0 <= 0) h=6; printf "%d", h*3600 }')
 MAX_CONSECUTIVE_FAILURES=3
 GOVERNANCE_CEILING="$DF_GOVERNANCE_CEILING"
 MAX_ATTEMPTS_PER_SPEC="${DF_MAX_ATTEMPTS_PER_SPEC:-3}"
